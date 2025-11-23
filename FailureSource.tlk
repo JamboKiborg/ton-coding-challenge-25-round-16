@@ -1,0 +1,32 @@
+;; Filename: FailureSource.tlk
+;; Contract B: Receives any message and intentionally stops execution, triggering a RichBounce.
+
+#include "stdlib.tlk"
+
+;; Unique internal function that causes the failure
+() cause_rich_bounce_failure(int balance, cell in_msg_full) impure {
+    
+    ;; Check message flags to avoid bouncing our own bounces
+    slice in_msg_slice = in_msg_full.begin_parse();
+    int flags = in_msg_slice.load_uint(6);
+    
+    if (flags & 1) {
+        "FailureSource received a bounce, ignoring to prevent loop." print;
+        return;
+    }
+    
+    ;; --- RichBounce Trigger ---
+    
+    "FailureSource received message. Executing controlled abort." print;
+    
+    ;; **Core action:** Use throw with a new unique error code (901)
+    ;; This triggers the RichBounce mechanism back to the sender (Contract A).
+    throw(901); 
+    
+    ;; The code execution will not continue past this point.
+}
+
+;; Standard entry point simply calls the failure function
+() recv_internal(int balance, int msg_value, cell in_msg_full, cell in_msg_body) impure {
+    cause_rich_bounce_failure(balance, in_msg_full);
+}
