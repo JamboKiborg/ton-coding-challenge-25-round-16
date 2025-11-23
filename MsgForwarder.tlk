@@ -1,0 +1,66 @@
+;; Filename: MsgForwarder.tlk
+;; Contract A: Forwards an incoming message to the Target contract (B) and listens for the expected RichBounce.
+;; Uses op code 0xABCDEF for forwarding.
+
+;; Standard Library
+#include "stdlib.tlk"
+
+;; Define a function to process the incoming RichBounce
+() process_error_bounce(cell bounce_payload) impure inline {
+    
+    ;; Store the incoming bounce cell in the temporary storage c5
+    c5 = bounce_payload;
+    
+    ;; Log the successful handling
+    "MsgForwarder received the expected RichBounce (error response)!" print;
+    
+    ;; Optional: Parse the bounce payload to check the error code or original message
+    slice payload_slice = bounce_payload.begin_parse();
+    int op = payload_slice.load_uint(32); 
+    "Bounce OP Code:" print_int; op print_int;
+    
+    return;
+}
+
+;; Main receiver function
+() recv_internal(int balance, int msg_value, cell in_msg_full, cell in_msg_body) impure {
+    
+    ;; Check message flags
+    slice in_msg_slice = in_msg_full.begin_parse();
+    int flags = in_msg_slice.load_uint(6);
+    
+    ;; Check for the bounce flag (bit 0 set)
+    if (flags & 1) {
+        ;; It's a bounce message
+        process_error_bounce(in_msg_body);
+        return;
+    }
+    
+    ;; --- Standard Forwarding Logic ---
+    
+    ;; Unique Target Address B (Placeholder)
+    cell target_b_addr_cell = begin_cell().store_uint(0x98765432, 32).end_cell(); 
+    slice target_b_addr = target_b_addr_cell.begin_parse();
+
+    ;; Create the message body for B
+    cell forward_body = begin_cell()
+        .store_uint(0xABCDEF, 32) ;; Unique forwarding op code
+        .store_slice(in_msg_body.begin_parse()) ;; Pass the original message body slice
+        .end_cell();
+
+    ;; Send the raw message to B
+    ;; We use send mode 65 (64 | 1): 64 for paying storage fee from the message value, 1 for sending all remaining TON.
+    send_raw_message(
+        begin_cell()
+            .store_slice(target_b_addr)
+            .store_coins(0)
+            .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+            .store_uint(0, 1) ;; no init
+            .store_uint(0, 1) ;; no data
+            .store_ref(forward_body)
+        .end_cell(), 
+        65 
+    );
+
+    "MsgForwarder sent payload to FailureSource. Preparing for rich bounce..." print;
+}
